@@ -36,220 +36,385 @@ description: 记录梁山派开发板 GCC 交叉编译开发环境的搭建过�
     └── Source
 ```
 
-接下来需要把示例的`main.c`, `systick.c`等source文件放在Core里面。Hardware则用于放置自己的驱动。
+接下来需要把示例的`main.c`, `systick.c`, `gd32f4xx_it.c`等source文件放在Core里面。Hardware则用于放置自己的驱动。
 
 
-
-
+### CMake
 
 CMake的核心是`CMakeLists.txt`。如下编写：
 
-```CMake
-cmake_minimum_required(VERSION 3.22)
+```cmake
+cmake_minimum_required(VERSION 3.22.0)
 
-# 1. 设置项目名称
-set(CMAKE_PROJECT_NAME Demo_Template)
-project(${CMAKE_PROJECT_NAME} C ASM)
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR arm)
 
-# 启用 clangd 编译命令导出，方便代码补全和跳转
-set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+set(CMAKE_C_COMPILER arm-none-eabi-gcc)
+set(CMAKE_CXX_COMPILER arm-none-eabi-g++)
+set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+set(CMAKE_C_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+
+project(LSPi_GCC_Template)
+
+enable_language(C CXX ASM)
 set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
-# 2. 【关键】在此处提前定义目标
-# 只有先执行了这一行，后续的 target_include_directories 才能找到挂载对象
-add_executable(${CMAKE_PROJECT_NAME})
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# 3. 宏定义 (GD32F470 核心)
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-        GD32F470
-        USE_STDPERIPH_DRIVER
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+# 设置二进制执行文件的生成位置
+# set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/Bin/${CMAKE_BUILD_TYPE}/)
+
+# 开启链接时优化
+cmake_policy(SET CMP0069 NEW)
+option(USE_LTO "Enable LTO" OFF)
+
+if(USE_LTO)
+        include(CheckIPOSupported)
+        check_ipo_supported(RESULT supported OUTPUT error)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
+get_property(isMultiConfig GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+if(isMultiConfig)
+        set(CMAKE_CROSS_CONFIGS "Release;Debug")
+        set(CMAKE_DEFAULT_BUILD_TYPE "Debug")
+        set(CMAKE_DEFAULT_CONFIGS "Release;Debug")
+endif()
+
+# 彩色日志输出
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
+option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." TRUE)
+
+if(${FORCE_COLORED_OUTPUT})
+        if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+                add_compile_options(-fdiagnostics-color=always)
+        elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+                add_compile_options(-fcolor-diagnostics)
+        endif()
+endif()
+
+# 添加全局define
+add_definitions(
+        -DGD32F470
 )
 
-# 4. 包含目录 (Include Paths)
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        "Core/Include"
-        "Firmware/CMSIS"
-        "Firmware/CMSIS/Include"
-        "Firmware/CMSIS/GD/GD32F4xx/Include"
-        "Firmware/GD32F4xx_standard_peripheral/Include"
-        ## "Firmware/GD32F4xx_usb_library/device/Include"
-        ## "Firmware/Third_Party" ## USB和第三方库
+# 添加编译指令
+add_compile_options(
+        "$<$<CONFIG:Debug>:-Og;-DDEBUG;-g;-funwind-tables>"
+        "$<$<CONFIG:Release>:-O3;-DNDEBUG>"
+        "$<$<CONFIG:MinSizeRel>:-Os;-DNDEBUG>"
+        "$<$<CONFIG:RelWithDebInfo>:-O2;-g;-DNDEBUG>"
 )
 
-# 5. 源文件搜寻
-file(GLOB_RECURSE CORE_SOURCES "Core/Source/*.c")
-file(GLOB_RECURSE HARDWARE_SOURCES "Hardware/Source/*.c")
-file(GLOB_RECURSE PERIPH_SOURCES "Firmware/GD32F4xx_standard_peripheral/Source/*.c")
-
-# 系统初始化与 GCC 版本的启动文件
-set(STARTUP_SYSTEM_SOURCES
-        "Firmware/CMSIS/GD/GD32F4xx/Source/system_gd32f4xx.c"
-        "Firmware/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S"
+# 添加链接指令
+add_link_options(
 )
-# 将搜寻到的源文件添加到目标
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+
+aux_source_directory(Core/Source CORE_SOURCES)
+aux_source_directory(Hardware/Source HARDWARE_SOURCES)
+aux_source_directory(Firmware/GD32F4xx_standard_peripheral/Source FIRMWARE_SOURCES)
+aux_source_directory(Firmware/CMSIS/GD/GD32F4xx/Source CMSIS_SOURCES)
+aux_source_directory(Firmware/CMSIS/GD/GD32F4xx/Source/GCC/newlib NEWLIB_SOURCES)
+
+set(STARTUP_SOURCE
+        Firmware/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S
+)
+
+add_executable(${PROJECT_NAME}
         ${CORE_SOURCES}
-        ${PERIPH_SOURCES}
         ${HARDWARE_SOURCES}
-        ${STARTUP_SYSTEM_SOURCES}
+        ${FIRMWARE_SOURCES}
+        ${CMSIS_SOURCES}
+        ${STARTUP_SOURCE}
 )
 
-# 6. 链接设置
-# 挂载我们自定义的 GD32F470 链接脚本
-set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/Firmware/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xG_flash.ld")
-
-
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
-        -T${LINKER_SCRIPT}
-        -Wl,-Map=${CMAKE_PROJECT_NAME}.map
-        -Wl,--gc-sections
+target_include_directories(${PROJECT_NAME} PRIVATE
+        Core/Include
+        Hardware/Include
+        Firmware/GD32F4xx_standard_peripheral/Include
+        Firmware/CMSIS
+        Firmware/CMSIS/GD/GD32F4xx/Include
 )
 
-target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE
-        m
-        c
-        nosys
+target_link_options(${PROJECT_NAME} PRIVATE
+        -T${CMAKE_CURRENT_SOURCE_DIR}/Firmware/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xG_flash.ld
+        -Wl,-Map=${PROJECT_NAME}.map
+        -Wl,--print-memory-usage
 )
 
-# 7. 编译后操作：生成 Hex 和 Bin 烧录文件
-add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
-        COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.hex
-        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
+add_custom_target(flash
+        DEPENDS ${PROJECT_NAME} # 确保烧录前先编译
+        COMMAND pyocd load -t gd32f470zg --format elf ${CMAKE_PROJECT_NAME}.elf
+        COMMENT "Flashing ${PROJECT_NAME} to GD32F470 and resetting"
 )
+
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.elf
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> $<TARGET_FILE_NAME:${PROJECT_NAME}>.bin
+        COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${PROJECT_NAME}> $<TARGET_FILE_NAME:${PROJECT_NAME}>.hex
+        COMMENT "Generating binary and hex files"
+)
+
 ```
 
 该`CMakeLists.txt`从STM32Cube的配置修改而来。具体CMake的修改由来
 
 {{< details title="详细步骤" closed="true" >}}
 
-默认情况下，这部分内容会被隐藏。
-
-#### Step 1: 骨架
-
-任何 CMake 需要这三行。此时仅定义环境。
+### 第 0 步：最简骨架（版本 + 项目 + 空目标）
 
 ```cmake
-cmake_minimum_required(VERSION 3.22)
-project(Demo_Template C)          # 默认只开启 C 语言
-add_executable(Demo_Template)     # 先创建一个空壳目标
+cmake_minimum_required(VERSION 3.22.0)
+project(LSPi_GCC_Template)
+add_executable(${PROJECT_NAME})
 ```
 
-`cmake_minimum_required`（版本约束）、`project`（定义项目名和语言）、`add_executable`（生成可执行目标）。
+这是任何 CMake 工程的起点。  
+- `cmake_minimum_required` 指定最低版本。  
+- `project` 定义项目名，默认启用 C 和 C++。  
+- `add_executable` 创建可执行目标（先空壳，后续添加源文件）。
 
-#### Step2：适配嵌入式
-
-添加启动文件是 `.S` 汇编，加上 clangd。
+### 第 1 步：添加交叉编译工具链和硬件标志
 
 ```cmake
-cmake_minimum_required(VERSION 3.22)
-project(Demo_Template C ASM)               # 开启汇编支持
-set(CMAKE_C_STANDARD 11)               # 指定 C11 标准
-set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)# 生成 compile_commands.json
-add_executable(Demo_Template)
+cmake_minimum_required(VERSION 3.22.0)
+
+set(CMAKE_SYSTEM_NAME Generic)
+set(CMAKE_SYSTEM_PROCESSOR arm)
+set(CMAKE_C_COMPILER arm-none-eabi-gcc)
+set(CMAKE_CXX_COMPILER arm-none-eabi-g++)
+set(CMAKE_ASM_COMPILER arm-none-eabi-gcc)
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+set(CMAKE_C_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+set(CMAKE_CXX_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+set(CMAKE_EXE_LINKER_FLAGS "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard" CACHE STRING "" FORCE)
+
+project(LSPi_GCC_Template)
+add_executable(${PROJECT_NAME})
 ```
 
-`project` 中的语言列表、`set` 修改变量、`CMAKE_EXPORT_COMPILE_COMMANDS` 用于 IDE 代码补全。
+新增内容：  
+- 声明系统为裸机（Generic），处理器 ARM。  
+- 指定编译器前缀（`arm-none-eabi-`），并设置 `CMAKE_TRY_COMPILE_TARGET_TYPE` 避免测试编译失败。  
+- 缓存硬件编译标志（内核、thumb、浮点 ABI），并强制覆盖，确保链接也使用相同选项。
+
+### 第 2 步：语言标准、构建类型选项和输出美化
+
+```cmake
+enable_language(C CXX ASM)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
+option(FORCE_COLORED_OUTPUT "Always produce ANSI-colored output" TRUE)
+if(FORCE_COLORED_OUTPUT)
+    if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+        add_compile_options(-fdiagnostics-color=always)
+    elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+        add_compile_options(-fcolor-diagnostics)
+    endif()
+endif()
+
+add_compile_options(
+    "$<$<CONFIG:Debug>:-Og;-DDEBUG;-g;-funwind-tables>"
+    "$<$<CONFIG:Release>:-O3;-DNDEBUG>"
+    "$<$<CONFIG:MinSizeRel>:-Os;-DNDEBUG>"
+    "$<$<CONFIG:RelWithDebInfo>:-O2;-g;-DNDEBUG>"
+)
+
+add_definitions(-DGD32F470)
+```
+
+新增内容：  
+- `enable_language` 显式启用 C、C++、汇编。  
+- 强制使用 C11/C++11，禁止 GNU 扩展。  
+- 打开编译命令导出（`compile_commands.json`）和彩色诊断。  
+- 根据编译器类型添加彩色输出参数。  
+- 使用生成器表达式 `$<$<CONFIG:Debug>:...>` 为不同构建类型添加差异化编译选项（优化、调试、宏）。
 
 ---
 
-#### Step3：添加源文件
-
-嵌入式需要大量源文件，用 `GLOB_RECURSE` 自动递归搜索，但启动文件和系统初始化文件必须显式列出。
+### 第 3 步：收集源文件、头文件路径和全局宏定义
 
 ```cmake
-file(GLOB_RECURSE CORE_SOURCES "Core/Source/*.c")
-file(GLOB_RECURSE HARDWARE_SOURCES "Hardware/Source/*.c")
-file(GLOB_RECURSE PERIPH_SOURCES "Firmware/GD32F4xx_standard_peripheral/Source/*.c")
+add_definitions(-DGD32F470)
 
-# 此处自定义 STARTUP_SOURCES 变量
-set(STARTUP_SOURCES 
-    "Firmware/CMSIS/GD/GD32F4xx/Source/system_gd32f4xx.c"
-    "Firmware/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S"
-)
+aux_source_directory(Core/Source CORE_SOURCES)
+aux_source_directory(Hardware/Source HARDWARE_SOURCES)
+aux_source_directory(Firmware/GD32F4xx_standard_peripheral/Source FIRMWARE_SOURCES)
+aux_source_directory(Firmware/CMSIS/GD/GD32F4xx/Source CMSIS_SOURCES)
+aux_source_directory(Firmware/CMSIS/GD/GD32F4xx/Source/GCC/newlib NEWLIB_SOURCES)
 
-# 把源文件挂载到目标上
-target_sources(Demo_Template PRIVATE
+set(STARTUP_SOURCE Firmware/CMSIS/GD/GD32F4xx/Source/GCC/startup_gd32f450_470.S)
+
+add_executable(${PROJECT_NAME}
     ${CORE_SOURCES}
-    ${PERIPH_SOURCES}
     ${HARDWARE_SOURCES}
-    ${STARTUP_SOURCES}
+    ${FIRMWARE_SOURCES}
+    ${CMSIS_SOURCES}
+    ${STARTUP_SOURCE}
+)
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    Core/Include
+    Hardware/Include
+    Firmware/GD32F4xx_standard_peripheral/Include
+    Firmware/CMSIS
+    Firmware/CMSIS/GD/GD32F4xx/Include
 )
 ```
 
-`file(GLOB_RECURSE)`（递归匹配文件）、`set()` 组合列表、`target_sources`（为目标追加源文件）。  
-> 注意：`GLOB` 不会自动检测新文件，正式项目推荐显式列出，此处仅为简化。
-
-#### Step4：头文件路径
-
-标准库和 CMSIS 的头文件散落各处，必须用 `target_include_directories` 告诉编译器。
-
-```cmake
-# 头文件搜索路径
-target_include_directories(Demo_Template PRIVATE
-    "Core/Include"
-    "Firmware/CMSIS"
-    "Firmware/CMSIS/Include"
-    "Firmware/CMSIS/GD/GD32F4xx/Include"
-    "Firmware/GD32F4xx_standard_peripheral/Include"
-)
-```
-
-`target_include_directories`（相当于编译器的 `-I` 参数），`PRIVATE` 表示仅本目标使用。
+新增内容：  
+- `add_definitions(-DGD32F470)` 添加全局宏。  
+- `aux_source_directory` 收集各目录下的源文件（非递归），区别于 `GLOB_RECURSE`。  
+- 显式列出启动汇编文件。  
+- 在 `add_executable` 中一次性指定所有源文件。  
+- `target_include_directories` 添加头文件搜索路径。
 
 ---
 
-#### Step5：宏定义
-
-`GD32F470` 宏告知标准库应该启动GD32F470寄存器映射
+### 第 4 步：链接脚本、链接选项和 LTO 支持
 
 ```cmake
-# 编译宏定义
-target_compile_definitions(Demo_Template PRIVATE
-    GD32F470
-    USE_STDPERIPH_DRIVER
+cmake_policy(SET CMP0069 NEW)
+option(USE_LTO "Enable LTO" OFF)
+if(USE_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT supported OUTPUT error)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+endif()
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    Core/Include
+    Hardware/Include
+    Firmware/GD32F4xx_standard_peripheral/Include
+    Firmware/CMSIS
+    Firmware/CMSIS/GD/GD32F4xx/Include
+)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+    -T${CMAKE_CURRENT_SOURCE_DIR}/Firmware/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xG_flash.ld
+    -Wl,-Map=${PROJECT_NAME}.map
+    -Wl,--print-memory-usage
 )
 ```
-`target_compile_definitions`（相当于 `-D` 参数），用于条件编译。
+
+新增内容：  
+- 通过 `cmake_policy` 和 `CheckIPOSupported` 提供可选的 LTO 开关。  
+- `target_link_options` 指定链接脚本、生成 `.map` 文件、打印内存占用。
 
 ---
 
-#### Step6：链接脚本与链接选项
-
-核心的一步：指定 `.ld` 文件，生成 `.map` 映射文件，并开启 `--gc-sections` 剔除未用函数。
+### 第 5 步：后处理（生成 hex/bin）和烧录自定义目标
 
 ```cmake
-# 设定链接脚本路径
-set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/Firmware/CMSIS/GD/GD32F4xx/Source/GCC/Ld/gd32f470xG_flash.ld")
-
-# 链接选项
-target_link_options(Demo_Template PRIVATE
-    -T${LINKER_SCRIPT}         # 指定 ld 脚本
-    -Wl,-Map=${PROJECT_NAME}.map  # 生成 map 文件
-    -Wl,--gc-sections          # 垃圾回收未用段
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.elf
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${PROJECT_NAME}> $<TARGET_FILE_NAME:${PROJECT_NAME}>.bin
+    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:${PROJECT_NAME}> $<TARGET_FILE_NAME:${PROJECT_NAME}>.hex
+    COMMENT "Generating binary and hex files"
 )
 
-# 链接基础库（数学、C库、无主机系统）
-target_link_libraries(Demo_Template PRIVATE
-    m        # 数学库
-    c        # C 标准库
-    nosys    # 裸机 syscall 空实现
+add_custom_target(flash
+    DEPENDS ${PROJECT_NAME}
+    COMMAND pyocd load -t gd32f470zg --format elf ${CMAKE_PROJECT_NAME}.elf
+    COMMENT "Flashing ${PROJECT_NAME} to GD32F470 and resetting"
 )
 ```
-`target_link_options`（传递链接器原生参数）、`CMAKE_CURRENT_SOURCE_DIR`（当前目录路径）、`target_link_libraries`（链接外部库）。`-Wl,` 是 GCC 向链接器传递参数的语法。
 
----
-
-### Step7：后处理命令
-
-编译出的 `.elf` 调试器能用，但烧录器通常要 `.hex` 或 `.bin`，用 `objcopy` 转换。
-
-```cmake
-# 构建完成后自动生成烧录文件
-add_custom_command(TARGET Demo_Template POST_BUILD
-    COMMAND ${CMAKE_OBJCOPY} -O ihex $<TARGET_FILE:Demo_Template> ${PROJECT_NAME}.hex
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:Demo_Template> ${PROJECT_NAME}.bin
-)
-```
-`add_custom_command`（自定义构建步骤）、`POST_BUILD`（链接后执行）、`${CMAKE_OBJCOPY}`（工具链内置变量）、`$<TARGET_FILE:...>`（生成器表达式，表示目标文件的完整路径）。
+新增内容（最终步骤）：  
+- `add_custom_command` 在链接后复制 `.elf` 并生成 `.bin` 和 `.hex`。  
+- `add_custom_target` 定义 `flash` 目标，依赖主目标，调用 `pyocd` 烧录。  
+- 使用生成器表达式 `$<TARGET_FILE:...>` 和 `$<TARGET_FILE_NAME:...>` 获取目标文件路径和名称。
 
 {{< /details >}}
+
+### 编译
+
+进入build/debug或者build/release文件夹：
+
+```bash
+cd build/debug
+ninja       #编译
+ninja flash #烧录
+```
+
+### 调试
+
+配置VSCode `launch.json`
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug GD32F4",
+            "type": "cortex-debug",
+            "request": "launch",
+            "servertype": "pyocd",
+            "serverpath": "path/to/pyocd",
+            "cwd": "${workspaceFolder}",
+            "executable": "${workspaceFolder}/build/debug/LSPi_GCC_Template.elf", 
+            "targetId": "gd32f470zg",                                 
+            "runToEntryPoint": "main",                                
+            "svdFile": "${workspaceFolder}/GD32F4xx.svd",            
+            "interface": "swd",                                        
+            "serverArgs": ["--persist"],
+            "showDevDebugOutput": "raw",    
+            "overrideGDBServerStartedRegex": "(started|Listening) on port"
+        }
+    ]
+}
+```
+
+`GD32F4xx.svd`文件可以从pyocd下载得到的pack文件里面解包出来。pyocd直接读取会报错，需要删除svd首行多出来的空格。
+
+### 点灯测试
+
+```c
+#include "gd32f4xx.h"
+#include "systick.h"
+#include <stdio.h>
+#include "main.h"
+
+/*!
+    \brief    main function
+    \param[in]  none
+    \param[out] none
+    \retval     none
+*/
+int main(void)
+{
+    systick_config();
+    rcu_periph_clock_enable(RCU_GPIOE);
+    gpio_mode_set(GPIOE, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO_PIN_3);
+    gpio_output_options_set(GPIOE, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, GPIO_PIN_3);
+    while(1) {
+        gpio_bit_write(GPIOE,GPIO_PIN_3,1);
+        delay_1ms(1000);
+        gpio_bit_write(GPIOE,GPIO_PIN_3,0);
+        delay_1ms(1000);
+    }
+}
+```
+
+修改`main.c`，输入ninja flash即可看到实验效果LED1 闪烁。
