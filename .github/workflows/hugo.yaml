@@ -19,13 +19,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.146.0   # 与你本地版本一致
+      HUGO_VERSION: 0.146.0
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false    # 关键！禁用子模块
+          submodules: false   # 明确禁用子模块
           fetch-depth: 0
+
+      # ★★★ 新增步骤：清除所有可能干扰的残留记录 ★★★
+      - name: Cleanup Git metadata
+        run: |
+          # 强制移除任何可能残留的子模块配置（即使文件不存在）
+          git config --local --remove-section submodule.themes/hextra 2>/dev/null || true
+          git config --local --remove-section submodule 2>/dev/null || true
+          rm -rf .git/modules 2>/dev/null || true
+          # 创建 .nojekyll 文件，彻底禁止 Jekyll
+          touch .nojekyll
 
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
