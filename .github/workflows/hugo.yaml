@@ -1,11 +1,10 @@
-# .github/workflows/hugo.yaml
 name: Build and Deploy Hugo Site to GitHub Pages
 
 on:
   push:
     branches:
-      - main  # 当推送到 main 分支时触发
-  workflow_dispatch: # 允许手动触发
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,12 +19,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.146.0 # 确保版本与你本地一致或更高
+      HUGO_VERSION: 0.146.0   # 与你本地版本一致
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false
+          submodules: false    # 关键！禁用子模块
           fetch-depth: 0
 
       - name: Setup Hugo
@@ -40,7 +39,7 @@ jobs:
 
       - name: Build with Hugo
         run: |
-          hugo mod get -u # 拉取最新的主题模块
+          hugo mod get -u
           hugo mod tidy
           hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}/"
 
