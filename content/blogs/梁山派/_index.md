@@ -2,6 +2,6 @@
 title = '梁山派'
 date = 2026-08-16T13:00:56+08:00
 draft = false
-cascade:
+[cascade]
   type: blog
 +++
