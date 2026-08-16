@@ -1,10 +1,11 @@
+# .github/workflows/hugo.yaml
 name: Build and Deploy Hugo Site to GitHub Pages
 
 on:
   push:
     branches:
-      - main
-  workflow_dispatch:
+      - main  # 当推送到 main 分支时触发
+  workflow_dispatch: # 允许手动触发
 
 permissions:
   contents: read
@@ -19,23 +20,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      HUGO_VERSION: 0.146.0
+      HUGO_VERSION: 0.146.0 # 确保版本与你本地一致或更高
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: false   # 明确禁用子模块
+          submodules: false
           fetch-depth: 0
-
-      # ★★★ 新增步骤：清除所有可能干扰的残留记录 ★★★
-      - name: Cleanup Git metadata
-        run: |
-          # 强制移除任何可能残留的子模块配置（即使文件不存在）
-          git config --local --remove-section submodule.themes/hextra 2>/dev/null || true
-          git config --local --remove-section submodule 2>/dev/null || true
-          rm -rf .git/modules 2>/dev/null || true
-          # 创建 .nojekyll 文件，彻底禁止 Jekyll
-          touch .nojekyll
 
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
@@ -49,7 +40,7 @@ jobs:
 
       - name: Build with Hugo
         run: |
-          hugo mod get -u
+          hugo mod get -u # 拉取最新的主题模块
           hugo mod tidy
           hugo --minify --baseURL "${{ steps.pages.outputs.base_url }}/"
 
