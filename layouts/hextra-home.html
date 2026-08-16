@@ -1,0 +1,16 @@
+{{ define "main" }}
+  <div class="hextra-home-hero hx:relative hx:flex hx:flex-col">
+    <div class="galaxy-bg" aria-hidden="true">
+      <div class="star-field"></div>
+      <div class="star-field-2"></div>
+      <div class="star-glows"></div>
+      <div class="meteor meteor-1"></div>
+      <div class="meteor meteor-2"></div>
+      <div class="meteor meteor-3"></div>
+      <div class="galaxy-overlay"></div>
+    </div>
+    <main id="content" class="hextra-home-main hx:relative hx:w-full hx:px-6 hx:text-center">
+      {{ .Content }}
+    </main>
+  </div>
+{{ end }}

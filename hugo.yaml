@@ -1,5 +1,109 @@
-baseURL: https://example.org/
-title: NutShell391's Blog
+baseURL: https://nutshell391.github.io/
+title: NutShell391 博客
+
+enableRobotsTXT: true
+enableGitInfo: true
+hasCJKLanguage: true
+
+# Markdown 渲染（允许 hero 区块中的原生 HTML）
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+
+# 输出格式（支持 Markdown 导出）
+outputs:
+  home: [html, llms]
+  page: [html, markdown]
+  section: [html, rss, markdown]
+
+# 导入 Hextra 模块
 module:
   imports:
     - path: github.com/imfing/hextra
+
+# 菜单（在顶部导航栏显示）
+menu:
+  main:
+    - identifier: blog
+      name: 博客
+      pageRef: /blog
+      weight: 1
+    - identifier: about
+      name: 关于
+      pageRef: /about
+      weight: 2
+    - name: GitHub
+      weight: 3
+      url: "https://github.com/NutShell391"
+      params:
+        icon: github
+
+# 主题参数
+params:
+  description: 一个记录技术学习的博客
+  navbar:
+    displayTitle: true
+    displayLogo: false   # 如果你没有 logo，就设为 false
+  footer:
+    enable: true
+    displayCopyright: true
+    displayPoweredBy: true
+  blog:
+    list:
+      sortBy: date
+      sortOrder: desc
+      pagerSize: 10
+    article:
+      displayPagination: true
+  displayUpdatedDate: true
+  dateFormat: "2006-01-02"
+  search:
+    enable: true
+    type: flexsearch
+  editURL:
+    enable: false   # 如果没有 GitHub 仓库编辑链接，关掉
+  toc:
+    displayTags: true
+
+sidebar:
+  - identifier: more
+    name: More
+    params:
+      type: separator
+    weight: 1
+  - identifier: about
+    name: "About"
+    pageRef: "/about"
+    weight: 2
+  - identifier: hugoDocs
+    name: "Hugo Docs ↗"
+    url: "https://gohugo.io/documentation/"
+    weight: 3
+
+blog:
+  list:
+    displayTags: true
+    # date | lastmod | publishDate | title | weight
+    sortBy: date
+    sortOrder: desc # or "asc"
+    # Pagination
+    pagerSize: 20
+
+  article:
+    displayPagination: true
+
+archives:
+  # Source section used for the archives page.
+  section: blog
+  # Date format for archive list items.
+  dateFormat: "Jan 02"
+
+toc:
+  displayTags: true
+
+highlight:
+  copy:
+    enable: true
+    # hover | always
+    display: hover

@@ -1,0 +1,97 @@
+{{ define "main" }}
+  <div class="hx:mx-auto hx:flex hextra-max-page-width">
+    {{ partial "sidebar.html" (dict "context" . "disableSidebar" true "displayPlaceholder" true) }}
+    <article class="hx:w-full hx:break-words hx:flex hx:min-h-[calc(100vh-var(--navbar-height))] hx:min-w-0 hx:justify-center hx:pb-8 hx:pr-[calc(env(safe-area-inset-right)-1.5rem)]">
+      <main id="content" class="hx:w-full hx:min-w-0 hextra-max-content-width hx:px-6 hx:pt-4 hx:md:px-12">
+        {{ partial "breadcrumb.html" (dict "page" . "enable" false) }}
+        <br class="hx:mt-1.5 hx:text-sm" />
+        {{ if .Title }}<h1 class="hx:text-center hx:mt-2 hx:text-4xl hx:font-bold hx:tracking-tight hx:text-slate-900 hx:dark:text-slate-100">{{ .Title }}</h1>{{ end }}
+        <div class="content">{{ .Content }}</div>
+        {{- $pages := partial "utils/sort-pages" (dict "page" . "by" site.Params.blog.list.sortBy "order" site.Params.blog.list.sortOrder) -}}
+        {{- /* 只保留真正的文章，过滤掉子目录的 _index 页 */ -}}
+        {{- $pages = where $pages "Kind" "ne" "section" -}}
+        {{- /* 顶层 /blog/ 聚合所有 blog 文章（跨子目录）；子目录页只显示本目录文章 */ -}}
+        {{- if eq .RelPermalink "/blog/" -}}
+          {{- $pages = where site.RegularPages "Section" "blog" -}}
+        {{- end -}}
+        {{- $pagerSize := site.Params.blog.list.pagerSize | default 10 -}}
+        {{- $paginator := .Paginate $pages $pagerSize -}}
+
+        {{- /* 收集当前列表页所有文章的标签（去重） */ -}}
+        {{- $allTags := slice -}}
+        {{- range $paginator.Pages -}}
+          {{- range .Params.tags -}}
+            {{- $allTags = $allTags | append . -}}
+          {{- end -}}
+        {{- end -}}
+        {{- $uniqueTags := uniq $allTags -}}
+
+        {{- if gt (len $uniqueTags) 0 -}}
+          <div id="blog-tag-bar" class="hx:flex hx:flex-wrap hx:gap-2 hx:mt-6 hx:mb-8 not-prose">
+            <button type="button" data-tag="all"
+              class="blog-tag-btn hx:px-3 hx:py-1 hx:rounded-full hx:text-sm hx:border hx:border-gray-200 hx:dark:border-neutral-800 hx:bg-primary-600 hx:text-white hx:dark:bg-primary-600 hx:dark:text-white hx:hover:border-primary-500 hx:cursor-pointer hx:transition-colors">
+              {{ (T "all") | default "全部" }}
+            </button>
+            {{- range $uniqueTags }}
+              <button type="button" data-tag="{{ . }}"
+                class="blog-tag-btn hx:px-3 hx:py-1 hx:rounded-full hx:text-sm hx:border hx:border-gray-200 hx:dark:border-neutral-800 hx:bg-transparent hx:hover:border-primary-500 hx:hover:text-primary-600 hx:cursor-pointer hx:transition-colors">
+                {{ . }}
+              </button>
+            {{- end }}
+          </div>
+        {{- end }}
+
+        {{- range $paginator.Pages }}
+          <div class="blog-post-item hx:mb-10" data-tags="{{ delimit (.Params.tags | default slice) " " }}">
+            <h3><a style="color: inherit; text-decoration: none;" class="hx:block hx:font-semibold hx:mt-8 hx:text-2xl " href="{{ .RelPermalink }}">{{ .Title }}</a></h3>
+            {{ if site.Params.blog.list.displayTags }}
+              <div class="hx:text-sm hx:leading-7">
+                {{ partial "tags.html" (dict "context" .) }}
+              </div>
+            {{ end }}
+            <p class="hx:opacity-80 hx:mt-4 hx:leading-7">{{- partial "utils/page-description" . -}}</p>
+            <p class="hx:opacity-50 hx:text-sm hx:mt-4 hx:leading-7">{{ partial "utils/format-date" .Date }}</p>
+          </div>
+        {{ end -}}
+
+        {{- if gt $paginator.TotalPages 1 -}}
+          {{ partial "components/blog-pager.html" $paginator }}
+        {{- end -}}
+      </main>
+    </article>
+    <div class="hx:max-xl:hidden hx:h-0 hx:w-64 hx:shrink-0"></div>
+  </div>
+
+  <script>
+    (function () {
+      var bar = document.getElementById("blog-tag-bar");
+      if (!bar) return;
+      var items = Array.prototype.slice.call(document.querySelectorAll(".blog-post-item"));
+      var buttons = Array.prototype.slice.call(bar.querySelectorAll(".blog-tag-btn"));
+
+      function setActive(activeBtn) {
+        buttons.forEach(function (btn) {
+          if (btn === activeBtn) {
+            btn.classList.add("hx:bg-primary-600", "hx:text-white");
+            btn.classList.remove("hx:bg-transparent");
+          } else {
+            btn.classList.remove("hx:bg-primary-600", "hx:text-white");
+            btn.classList.add("hx:bg-transparent");
+          }
+        });
+      }
+
+      buttons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var tag = btn.getAttribute("data-tag");
+          setActive(btn);
+          items.forEach(function (item) {
+            var tags = (item.getAttribute("data-tags") || "").split(" ").filter(Boolean);
+            var show = tag === "all" || tags.indexOf(tag) !== -1;
+            item.style.display = show ? "" : "none";
+          });
+        });
+      });
+    })();
+  </script>
+{{- end -}}
